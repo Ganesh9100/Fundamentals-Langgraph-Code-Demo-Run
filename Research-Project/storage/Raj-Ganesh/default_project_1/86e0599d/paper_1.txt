@@ -1,0 +1,885 @@
+TITLE: MCP4EDA: LLM-Powered Model Context Protocol RTL-to-GDSII Automation with Backend Aware Synthesis Optimization
+URL: http://arxiv.org/abs/2507.19570v1
+
+MCP4EDA: LLM-Powered Model Context Protocol
+RTL-to-GDSII Automation with Backend Aware
+Synthesis Optimization
+Yiting Wang1,∗, Wanghao Ye1,∗, Yexiao He1, Yiran Chen2, Gang Qu1, Ang Li1,†
+1Electrical and Computer Engineering, University of Maryland, College Park, United States
+2Electrical and Computer Engineering, Duke University, Durham, United States
+∗Equal contribution
+†Corresponding author: angliece@umd.edu
+Abstract—This paper presents MCP4EDA, the first Model
+Context Protocol server that enables Large Language Models
+(LLMs) to control and optimize the complete open-source RTL-
+to-GDSII design flow through natural language interaction. The
+system integrates Yosys synthesis, Icarus Verilog simulation,
+OpenLane place-and-route, GTKWave analysis, and KLayout
+visualization into a unified LLM-accessible interface, enabling
+designers to execute complex multi-tool EDA workflows con-
+versationally via AI assistants such as Claude Desktop and
+Cursor IDE. The principal contribution is a backend-aware
+synthesis optimization methodology wherein LLMs analyze actual
+post-layout timing, power, and area metrics from OpenLane
+results to iteratively refine synthesis TCL scripts, establishing a
+closed-loop optimization system that bridges the traditional gap
+between synthesis estimates and physical implementation reality.
+In contrast to conventional flows that rely on wire-load models, this
+methodology leverages real backend performance data to guide
+synthesis parameter tuning, optimization sequence selection, and
+constraint refinement, with the LLM functioning as an intelligent
+design space exploration agent. Experimental evaluation on
+representative digital designs demonstrates 15-30% improvements
+in timing closure and 10-20% area reduction compared to default
+synthesis flows, establishing MCP4EDA as the first practical LLM-
+controlled end-to-end open-source EDA automation system. The
+code and demo are avaiable at: http://www.agent4eda.com/
+Index Terms—Model Context Protocol, Electronic Design
+Automation, Large Language Models, Synthesis Optimization
+I. INTRODUCTION
+The RTL-to-GDSII flow represents the most complex and
+labor-intensive aspect of chip design, transforming Register
+Transfer Level (RTL) descriptions into manufacturable Graphic
+Data System II (GDSII) layouts through a sophisticated
+sequence of logic synthesis, physical design, timing closure,
+and verification stages. This process requires expertise across
+multiple specialized domains, involving intricate tool interac-
+tions, parameter tuning, and iterative optimization to achieve
+competitive Power, Performance, and Area (PPA) objectives.
+With chip manufacturing demand at unprecedented levels and
+design complexity growing exponentially, the manual nature
+of synthesis script generation and design flow orchestration
+has become a critical bottleneck.
+Current RTL-to-GDSII workflows provide generic design
+flows but are fundamentally limited by fixed template-based
+approaches. The design space is constrained to only a few
+fixed patterns, resulting in low design closure success rates and
+poor design quality. To ensure high-quality designs, customized
+design flows are essential. However, design space exploration
+requires extensive expertise and domain knowledge to calibrate
+and configure numerous design factors and tool settings.
+Machine learning tools like Flowtune [1] provide design
+choice calibration, but lack backend-aware customization.
+Traditional synthesis flows rely on Wire Load Models (WLM)
+for delay estimation, which become increasingly inaccurate at
+advanced nodes [2], making synthesis-only tuning insufficient.
+Large Language Models (LLMs) have demonstrated transfor-
+mative potential in Electronic Design Automation (EDA), with
+existing approaches introducing significant improvements in
+workflow automation efficiency. Researchers have demonstrated
+LLM’s potential to automate various aspects of the RTL-to-
+GDSII process. These applications span hardware description
+language (HDL) code generation [3]–[8], debugging [9], and
+optimization [10], [11], as well as synthesis script creation [4],
+[12]. Beyond these individual tasks, comprehensive research has
+explored using LLMs for complete RTL-to-GDSII workflows
+by creating integrated flows that combine tool calls and API
+calls [4], [13], [14]. These previous works have significantly
+reduced design labor costs.
+However, current LLM-based approaches exhibit significant
+limitations documented in recent literature. Most existing
+methods rely on fixed API calling patterns rather than dynamic
+tool selection, constraining their adaptability to varying design
+requirements. Furthermore, existing systems implement LLM
+integration through predetermined synthesis and implementa-
+tion flows, preventing dynamic design-based tool selection or
+adaptive execution strategies based on intermediate results. The
+generation processes also require excessive time due to token
+limits and restart requirements, hampering practical deployment.
+Additionally, the scalability of these approaches remains limited,
+as adding more functionalities or tools to the system presents
+considerable challenges.
+To address the challenges in RTL-to-GDSII automation, this
+arXiv:2507.19570v1  [cs.AR]  25 Jul 2025
+paper proposes MCP4EDA, the first Model Context Protocol
+(MCP) server that enables seamless interaction between LLMs
+and open-source EDA toolchains. MCP4EDA provides a unified
+interface that allows LLMs to dynamically orchestrate complete
+open-source RTL-to-GDSII flows through natural language
+interaction. The framework also implements backend-aware
+synthesis optimization by creating a closed-loop feedback
+mechanism between synthesis decisions and actual physical
+implementation results.
+The challenge of fixed template workflows in current
+RTL-to-GDSII flows is addressed through MCP4EDA’s flexible
+protocol architecture, which enables dynamic tool sequence
+composition and adaptive strategy execution. This approach
+replaces predetermined scripts with intelligent workflow or-
+chestration, allowing the system to adapt tool sequences based
+on design requirements and intermediate results.
+The issue of backend-unaware synthesis optimization
+is tackled through a closed-loop optimization methodology
+where LLMs analyze actual post-layout metrics from physical
+implementation results to iteratively refine synthesis scripts.
+This approach replaces the traditional reliance on inaccurate
+Wire Load Models (WLM) with real backend performance
+data, enabling synthesis decisions that are informed by actual
+physical implementation constraints and parasitic effects.
+The limitation of rigid API call patterns that constrain LLM
+capabilities and result in suboptimal performance is resolved
+through MCP’s tool calling architecture. This framework
+provides quantified efficiency gains by enabling intelligent
+tool selection with interactions throughout the design process,
+allowing LLMs to maintain context and make informed deci-
+sions based on accumulated design knowledge and feedback.
+The challenge of insufficient dynamic tool selection is
+addressed through MCP4EDA’s agent-based architecture, which
+enables LLMs to function as intelligent orchestration agents.
+These agents make sequential decisions based on real-time
+design metrics and intermediate results, dynamically selecting
+appropriate tools and optimization strategies as the design
+progresses through the implementation flow.
+Our key contributions are summarized as follows:
+1) Novel MCP-based EDA Architecture: First Open-
+Source MCP server for comprehensive RTL-to-GDSII
+automation enabling natural language control of inte-
+grated open-source EDA toolchains.
+2) Backend-Aware
+Synthesis
+Optimization:
+Closed-
+loop methodology bridging documented synthesis-
+implementation gaps using actual post-layout metrics
+for parameter tuning.
+3) Dynamic LLM-Controlled Design Flow: Adaptive
+orchestration leveraging MCP’s proven efficiency advan-
+tages for selective step execution and iterative refinement.
+4) Comprehensive Evaluation Framework: We establish
+a rigorous design benchmark suite comprising hand-
+selected designs from OpenCores and various open-
+source repositories, systematically demonstrating 1-30%
+critical path improvements and 5-30% area reduction
+compared to default synthesis flows across diverse design
+complexities.
+II. BACKGROUND
+Traditional RTL-to-GDSII workflows, such as OpenLane
+and OpenRoad [15] [16], remain fundamentally constrained
+by predetermined design flows and rigid orchestration method-
+ologies. The diversity of EDA tasks and the specialized
+nature of hardware description languages present fundamental
+challenges for automation, which normally require extensive
+human labor and expertise. Industry research confirms that
+point-tool solutions create silos where design changes trigger
+complete flow re-runs, while design space exploration remains
+constrained by substantial computational costs [17], [18].
+Another challenge in design space exploration is that
+classical synthesis optimization faces significant challenges
+due to its reliance on Wire Load Models (WLMs), which
+provide statistical approximations rather than actual routing
+characteristics, leading to poor correlation between synthesis
+estimates and physical implementation [17]. While synthesis-
+to-place-and-route timing correlation achieved 3-4% accuracy
+at older nodes, significant gaps emerge at 28nm and below
+where interconnect parasitics dominate and WLM reliability
+degrades [19]. Backend feedback limitations exacerbate these
+correlation gaps, with timing violations discovered only after
+place-and-route, necessitating expensive iteration cycles.
+Design space exploration compounds these issues through
+computational complexity. The exponential growth in optimiza-
+tion combinations makes exhaustive search unfeasible [20],
+while traditional approaches suffer from either fixed optimiza-
+tion patterns with inadequate coverage or vast explorations
+lacking sufficient guidance [21]. The complexity of directive
+combinations while simultaneously balancing timing, area, and
+power constraints remains a fundamental challenge [22].
+Current LLMs show promise for design space exploration
+due to their strong generation capabilities and rule understand-
+ing. However, existing integration approaches face several key
+limitations. First, they rely on fixed API calling sequences
+and predetermined synthesis flows, preventing dynamic tool
+selection or adaptive execution strategies [6], [23]. This
+constrains LLMs within predetermined boundaries, limiting
+intelligent design space exploration and conditional tool ex-
+ecution capabilities. Second, performance issues arise from
+excessive generation times due to token limits and restart
+requirements [7], [14]. Third, technical constraints include
+limited hardware-related knowledge in pretrained models and
+difficulties with specialized HDL syntax, necessitating exten-
+sive domain-specific fine-tuning [12]. These fixed integration
+patterns prevent the dynamic, adaptive approaches needed for
+effective design space exploration [24], [25].
+Model Context Protocol addresses integration challenges by
+providing standardized interfaces for AI-tool communication,
+though academic evaluation of its effectiveness in EDA con-
+texts remains limited. MCP enables standardized connections
+between AI models and external data sources through a
+client-server architecture that maintains stateful sessions [26].
+The protocol facilitates dynamic tool discovery and reduces
+integration complexity from M×N custom connectors to M+N
+standardized implementations. Standardized messaging proto-
+cols enable seamless interaction across diverse systems while
+breaking down data silos [27]. Security frameworks incorporate
+authentication mechanisms for remote server connections and
+flexible resource management through server-initiated comple-
+tion requests. However, the protocol’s effectiveness for complex
+EDA workflows, token efficiency improvements, and scalability
+benefits require empirical validation through controlled studies.
+Current academic literature lacks comprehensive performance
+comparisons between MCP and traditional API approaches
+in EDA-specific contexts, representing an important area for
+future research.
+III. METHODOLOGY
+MCP-EDA WORKFLOW
+MCP HOST
+MCP CLIENT
+MCP CLIENT
+MCP CLIENT
+MCP SERVER
+Synthesis
+TOOLS
+TCL script generation 
+Yosys + abc synthesis
+Analyze backend results
++ Refine Scripts
+Simulation
+Icarus Verilog 
+GTKWave view
+OpenLane backend flow
+OpenlLane design quality
+assessment
+Backend
+Post
+Response
+Send context
+Tool Request
+LLM
+Call
+Response
+KLayout GDSII file view
+Tool Request
+Feedback
+Update
+Fig. 1: MCP4EDA workflow architecture integrating Model
+Context Protocol components with EDA tools for backend-
+aware synthesis optimization. The MCP Host (Claude Desk-
+top/Cursor IDE) provides natural language interface. Multiple
+MCP Clients manage individual tool connections with stateful
+sessions. The MCP Server orchestrates tool execution across
+three domains: Simulation (Icarus Verilog, GTKWave), Synthe-
+sis (TCL generation, Yosys [28]+abc [29], backend analysis),
+and Backend (OpenLane flow, layout visualization, quality
+assessment). The LLM receives real backend metrics through
+feedback loops, enabling iterative script refinement based on
+actual post-layout performance.
+A. Solution to Challenge 1: Dynamic Workflow Architecture
+MCP4EDA implements a flexible, adaptive workflow archi-
+tecture replacing rigid predetermined sequences with intelligent,
+context-aware design flow orchestration. The MCP Host serves
+as the primary user interface through Claude Desktop or Cursor
+IDE environments, providing natural language interaction
+capabilities. Users specify design objectives, constraints, and
+optimization targets through conversational prompts, eliminat-
+ing manual tool configuration.
+The host maintains session context across multiple design
+iterations, enabling complex multi-step optimization workflows
+Backend aware TCL optimization
+Phase I: 
+Fixed script Exploration
+RTL Design
+Input
+Execute Fixed
+Scripts
+AREA
+0-3
+DELAY
+0-4
+OpenLane
+Backend Flow
+Area
+(μm²)
+Power
+(mW)
+Timing
+(WNS/TNS)
+Violations
+Baselines with
+Backend Metrics
+Phase II: 
+LLM Analysis 
+LLM Backend
+Analysis
+RAG
+Query
+ABC
+Manual
+Yosys
+Guide
+Generate
+Refinement
+Strategy
+Create
+Optimized TCL
+Script
+Baseline
+Patterns
+Phase III: 
+Iterative Refinement
+Execute Refined
+Script
+OpenLane
+Backend Flow
+Collect New
+Metrics
+Final Optimized
+Script
+Improvement?
+NO
+YES
+Fig. 2: Backend-aware TCL optimization workflow showing
+three-phase iterative synthesis optimization. Phase I establishes
+baseline metrics through fixed script exploration with OpenLane
+backend execution. Phase II employs LLM analysis of backend
+results using RAG query integration with ABC manual and
+Yosys guides to generate optimized TCL scripts. Phase
+III implements iterative refinement cycles, executing refined
+scripts through OpenLane, collecting performance metrics, and
+continuing optimization until convergence.
+that adapt based on intermediate results. Unlike template-based
+approaches following predetermined sequences, the MCP4EDA
+architecture enables dynamic strategy execution where the
+LLM modifies workflow sequences, skips unnecessary steps,
+or introduces additional optimization stages based on real-time
+assessment of design progress and constraints.
+B. Backend-Aware Synthesis Optimization
+MCP4EDA’s core innovation lies in backend-aware synthesis
+optimization methodology, creating closed-loop feedback be-
+tween synthesis decisions and actual physical implementation
+results. This differs from traditional synthesis flows relying on
+Wire Load Models or statistical approximations. The complete
+optimization workflow (Figure 2) demonstrates the three-phase
+iterative process for optimal synthesis configurations.
+1) Phase I: Fixed Script Exploration and Baseline Establish-
+ment: The optimization process begins with systematic baseline
+establishment through fixed script exploration. The system
+executes predefined synthesis scripts with varying optimization
+levels (AREA 0-3, DELAY 0-4) to establish performance
+baselines across the design space. Each configuration under-
+goes complete OpenLane backend flow execution, generating
+comprehensive metrics including area utilization (µm²), power
+consumption (mW), timing performance (WNS/TNS), and
+constraint violations.
+This baseline exploration: (1) establishes performance bound-
+aries and feasible optimization ranges, (2) identifies promising
+LLM Prompt
+Optimization Goal: Based on ABC synthesis doc-
+umentation, and the ABC command with physical
+results, focus on TIMING optimization.
+Iteration 2: 3971.31 µm2 area, 0.88ns
+critical path, 0.000578 µW power [
+TIMING IMPROVED: 0.030ns].
++read_constr,${sdc_file};strash;dch;map -
+B 0.85;buffer -c -N 4; upsize -c;map
+-B 0.95;buffer -c ... -m
+LLM Response
+Recommended Optimization Strategy:
+Applying balanced buffer mapping with enhanced
+resynthesis sequence:
++read_constr,${sdc_file};strash;${abc_rf
+};dch;map -B 0.87;buffer -c -N ... -m
+Execution Result
+Iteration 3: 3913.75 µm2 area, 0.86ns
+critical path,
+0.000538 µW power
+Summary: The LLM-guided optimization achieved
+timing improvement of 0.050ns and area reduc-
+tion of 1.4%.
+Fig. 3: Example LLM-Guided Synthesis Optimization with
+Iterative Refinement
+configuration patterns demonstrating effective optimization
+trade-offs, and (3) provides ground-truth backend metrics
+enabling accurate correlation between synthesis parameters
+and physical implementation results.
+2) Phase II: LLM-Guided Analysis and Refinement Strategy
+Generation: Phase II leverages LLM capabilities for intelligent
+analysis of backend results and strategic refinement generation.
+The LLM analyzes backend results for timing violations, area
+inefficiencies, power issues, and routing congestion.
+The
+analysis
+incorporates
+domain-specific
+knowledge
+through the integration of Retrieval-Augmented Genera-
+tion(RAG) query with the ABC optimization manual and
+Yosys synthesis guides, enabling access to specialized synthesis
+knowledge and proven optimization strategies. This correlates
+the observed performance with documented techniques to
+generate refinement strategies for identified limitations.
+The LLM generates optimized TCL scripts by analyzing
+baseline patterns and applying targeted optimization strategies.
+Unlike fixed template approaches, the LLM dynamically adjusts
+optimization sequences, selects relevant synthesis algorithms,
+and configures tool-specific parameters based on specific
+performance characteristics observed in baseline exploration.
+3) Phase III: Iterative Refinement and Convergence: The
+final phase implements iterative refinement cycles where
+optimized TCL scripts undergo execution through OpenLane
+backend flow, generating new performance metrics for compar-
+ison with baseline results. The system evaluates improvements
+in timing, area, power, and design rule compliance.
+When improvements are achieved, the system updates the
+optimization baseline and initiates subsequent iterations, incor-
+porating lessons from previous attempts. The LLM maintains
+history to avoid revisiting unsuccessful configurations while
+identifying promising optimization directions for exploration.
+Refinement continues until design objectives are satisfied.
+4) LLM-Guided TCL Script Generation: The synthesis
+optimization process begins with LLM-driven TCL script
+generation, where the language model analyzes RTL design
+characteristics and user-specified constraints to generate op-
+timized synthesis configurations. The LLM considers design
+complexity, target frequency requirements, area constraints,
+and power objectives to select appropriate synthesis strategies.
+The script generation process incorporates domain-specific
+knowledge about synthesis tool capabilities, optimization trade-
+offs, and common design patterns. The LLM maintains aware-
+ness of Yosys synthesis options, abc optimization algorithms,
+and technology mapping strategies, enabling intelligent selec-
+tion of synthesis flows tailored to specific design requirements.
+Figure 3 demonstrates this iterative optimization approach,
+where the LLM analyzes baseline performance metrics and
+generates refined ABC command sequences.
+5) Backend Metrics Analysis and Feedback: Following
+synthesis and place-and-route execution through OpenLane,
+the system extracts comprehensive backend metrics including
+actual timing analysis results, real area utilization, power
+consumption estimates, and routing congestion data. These
+metrics represent ground-truth implementation characteristics
+rather than synthesis-stage approximations.
+The LLM analyzes backend results to identify performance
+bottlenecks, timing violations, area inefficiencies, and power
+optimization opportunities. This includes both quantitative
+metrics and qualitative design analysis. For timing analysis, the
+LLM examines critical path delays, setup and hold violations,
+and clock skew characteristics. Area analysis considers standard
+cell utilization, routing resource consumption, and macro
+placement efficiency.
+This backend-aware approach optimizes synthesis using
+actual implementation data rather than estimates, resulting
+in improved correlation between synthesis predictions and final
+silicon performance.
+C. Standardized LLM-EDA Integration
+MCP4EDA leverages the Model Context Protocol to establish
+standardized, flexible communication between Large Language
+Models and EDA toolchains. The architecture implements a
+three-tier structure consisting of MCP Host, MCP Clients, and
+90000
+95000
+100000
+Area ( m²)
+2.6
+2.8
+3.0
+3.2
+Critical Path (ns)
+APU
+5000
+6000
+7000
+Area ( m²)
+1.5
+2.0
+GCD
+4500
+5000
+5500
+6000
+Area ( m²)
+1.2
+1.4
+1.6
+ALU
+6000
+7000
+8000
+Area ( m²)
+1.0
+1.5
+EQUVALENCE
+Baseline-AREA
+Baseline-DELAY
+Optimized-TIMING
+Optimized-AREA
+Optimized-BALANCED
+Fig. 4: Time vs Area (left) and APU Best Overall Optimization (right)
+MCP Server components that collectively enable dynamic tool
+orchestration and stateful workflow management.
+MCP Clients function as protocol intermediaries, with each
+client maintaining dedicated connections to specific tool cate-
+gories within the EDA workflow. The multi-client architecture
+provides: (1) isolation of tool failures preventing cascade errors
+across the entire workflow, (2) parallel execution capabilities for
+independent design steps, and (3) modular expansion allowing
+new tools to be integrated without modifying existing client
+connections.
+Each client maintains state and context throughout optimiza-
+tion cycles. This stateful approach enables the LLM to maintain
+awareness of previous optimization attempts, intermediate
+results, and design history, facilitating intelligent decision-
+making that builds upon previous iterations.
+D. Intelligent Tool Selection Framework
+The MCP Server orchestrates intelligent tool execution
+through domain-based organization enabling selective, context-
+aware tool invocation. The server manages three primary
+functional domains: The Simulation domain integrates Icarus
+Verilog for RTL simulation and GTKWave for waveform
+visualization. The Synthesis domain encompasses TCL script
+generation, Yosys synthesis with abc optimization, and backend
+result analysis capabilities. The Backend domain manages
+OpenLane place-and-route flows, KLayout GDSII visualization,
+and comprehensive design quality assessment tools.
+This domain-based organization enables the LLM to function
+as an intelligent design space exploration agent, selectively
+invoking relevant toolsets based on current optimization ob-
+jectives rather than following predetermined sequences. The
+LLM dynamically selects tools, execution order, and parameters
+based on design state and objectives.
+The framework tracks optimization history to avoid failed
+configurations and identify promising directions, transforming
+rigid EDA workflows into adaptive optimization processes.
+IV. EXPERIMENTAL EVALUATION
+The experimental evaluation of MCP4EDA’s backend-aware
+synthesis optimization methodology was conducted using a
+comprehensive suite of digital designs to assess performance
+improvements across multiple optimization objectives. The
+evaluation employed OpenLane v2.0 as the baseline implemen-
+tation flow, comparing default synthesis configurations against
+MCP4EDA’s LLM-guided optimization strategies.
+A. Design Benchmark Suite
+The experimental evaluation utilized a diverse collection
+of RTL designs spanning different complexity levels and
+application domains to ensure comprehensive assessment of
+the optimization methodology. The benchmark suite consists of
+nine distinct designs sourced primarily from OpenCores [30],
+representing various digital signal processing, arithmetic, and
+communication applications. All designs were synthesized
+using the SkyWater Sky130 PDK 130nm technology library to
+ensure consistency in physical implementation characteristics.
+Three optimization approaches were evaluated to assess
+MCP4EDA’s backend-aware synthesis effectiveness:
+Baseline Configuration: To establish the effectiveness and
+targeting effect of different optimization goals, OpenLane’s nine
+existing synthesis options (DELAY 0-4 and AREA 0-3) were
+executed on all benchmark designs. The best results in Delay
+and Area are selected to represent ground-truth performance
+metrics for comparison.
+Fixed API Template: Synthesis optimization was performed
+using fixed API calls with the Claude 4 Sonnet model, utilizing
+existing physical metrics from the baseline configuration with-
+out further feedback. This configuration represents traditional
+template-based LLM integration approaches that lack iterative
+backend-aware optimization capabilities.
+MCP4EDA Backend-Aware: Physically-aware synthesis op-
+timization was performed using multiple self-iterations with
+the Claude 4 Sonnet model, incorporating real backend metrics
+through the three-phase optimization workflow described in
+the methodology section. This configuration represents the
+full MCP4EDA framework with closed-loop feedback between
+synthesis decisions and physical implementation results.
+All designs were synthesized using Yosys synthesis tool,
+and the generated netlists were subsequently processed through
+OpenLane backend tools for place-and-route implementation,
+ensuring consistent physical implementation flow across all
+experimental configurations.
+TABLE I: Design Performance Comparison: Timing and Area Results
+Design
+Base
+Fixed API
+MCP EDA
+Base
+Fixed API
+MCP EDA
+Delay (ns)
+Delay (ns)
+Delay (ns)
+Area (µm²)
+Area (µm²)
+Area (µm²)
+equivalence_resolver
+0.81
+0.74
+0.74
+5885.64
+5990.75
+5574.10
+rs232
+0.91
+0.90
+0.90
+2781.42
+2781.42
+2781.42
+gcd
+2.29
+2.00
+1.47
+5074.87
+5009.80
+4785.84
+APU
+2.69
+2.64
+2.64
+86618.07
+86618.07
+86618.07
+gcd
+1.59
+2.00
+1.47
+5042.34
+5009.80
+4785.84
+UART_RTO
+0.54
+0.76
+0.52
+1726.66
+1726.66
+1707.89
+P16C5x_ALU
+1.14
+1.24
+1.13
+4977.27
+4977.27
+4660.72
+FSM
+0.33
+0.33
+0.33
+52550.40
+53660.78
+42040.32
+divide
+2.04
+2.04
+2.04
+18830.56
+20234.41
+17902.17
+Log2pipelined
+0.55
+0.55
+0.55
+5405.184
+4057.64
+3336.95
+GeoMean
+1.05
+1.09
+0.97
+8360.21
+8436.75
+7566.24
+Ratio
+1
+1.04
+0.94
+1
+1.01
+0.91
+B. Experimental Results and Analysis
+As shown in Figure 4, four designs are shown with
+baseline and optimized synthesis to backend results approaches
+measured and plotted respect of critical path and area, the
+optimized results have reached the alignment between the
+requirement (AREA, TIMING, BALANCED) and have also
+reached the best performance in the required optimization goal
+while keeping the other metric as uncompromised as possible.
+The experimental results in Table I demonstrate the effec-
+tiveness of MCP4EDA’s backend-aware synthesis optimization
+methodology across the diverse benchmark suite. MCP4EDA
+consistently achieves superior performance compared to both
+baseline and fixed API template approaches, with geometric
+mean results revealing a 6% improvement in timing perfor-
+mance (0.94 ratio) and a 9% area utilization (0.91 ratio)
+compared to the baseline configuration. In contrast, the fixed
+API template approach shows degraded performance with
+a 4% increase in timing delay and 1% increase in area,
+highlighting the importance of backend-aware feedback in
+synthesis optimization.
+As illustrated in Figure 5, the execution time of the
+MCP4EDA workflow exhibits significant variation across de-
+signs of different complexities. The backend-aware synthesis
+optimization employs an iterative refinement process, where
+each iteration requires complete synthesis and place-and-route
+execution. For smaller designs with approximately 5,000 µm²
+area, each synthesis and routing iteration requires approximately
+one minute of computation time. For larger designs with
+areas around 50,000 µm², this duration reaches approximately
+three minutes per iteration. The MCP inference overhead
+remains consistent at approximately seven minutes per design,
+independent of design complexity.
+The experimental results demonstrate that despite compu-
+tational overhead from iterative optimization cycles, runtime
+scaling remains tractable for practical design configurations.
+The primary overhead stems from physical implementation
+phases—an intrinsic requirement of backend-aware optimiza-
+tion that reflects necessary computational complexity for
+accurate physical analysis. The strong alignment between
+0
+5
+10
+15
+20
+25
+30
+35
+40
+45
+50
+Execution Time (min)
+~5000 m²
+~50000 m²
+Collect Base Metrics
+TCL Opt. Synthesis
+TCL Opt. Routing
+TCL Opt. Inference
+MCP Inference
+Fig. 5: Design Runtime Evaluation
+user requirements and achieved physical metrics validates
+MCP4EDA’s effectiveness.
+V. LIMITATIONS
+While MCP4EDA has demonstrated promising timing and
+area improvements on nine open-source benchmarks under the
+SkyWater Sky130 PDK, its scope remains limited to small-to-
+medium RTL designs. Scaling to larger industrial blocks will
+require addressing longer reports, larger scripts, and increased
+tool runtime. The closed-loop workflow incurs non-negligible
+compute and runtime overhead: each iteration requires a
+full synthesis–place-and-route run plus LLM processing, and
+convergence typically occurs in three to five iterations. Dynamic
+and leakage power metrics were not systematically measured,
+so the impact of backend-aware scripts on power consumption
+remains unquantified. The framework relies on an off-the-shelf
+general-purpose LLM (Claude 4) with RAG over Yosys/ABC
+manuals; domain-specialized models or lightweight fine-tuning
+could improve EDA-specific reasoning and script quality.
+Finally, MCP4EDA currently orchestrates only open-source tools
+and has not been evaluated with commercial synthesis or place-
+and-route toolchains.
+VI. CONCLUSION
+MCP4EDA presents the first Model Context Protocol server
+that demonstrates LLM-controlled end-to-end RTL-to-GDSII
+automation with backend-aware synthesis optimization. The
+system achieves significant performance improvements in
+critical paths and area reductions compared to baseline synthesis
+flows through its innovative closed-loop feedback methodology
+that leverages real post-layout metrics rather than statistical
+approximations. By integrating a series of open-source EDA
+tools into a unified LLM-accessible interface, MCP4EDA
+transforms rigid template-based EDA workflows into adaptive,
+intelligent design space exploration processes. The experimental
+evaluation across nine diverse RTL designs demonstrates
+the framework’s effectiveness in bridging the traditional gap
+between synthesis estimates and physical implementation
+reality. Future work will focus on scaling to larger industrial
+designs through hierarchical optimization and extending support
+to closed-source commercial EDA tools to demonstrate broader
+applicability across industry-standard workflows.
+REFERENCES
+[1] W. L. Neto, Y. Li, P.-E. Gaillardon, and C. Yu, “Flowtune: End-to-end
+automatic logic optimization exploration via domain-specific multi-armed
+bandit,” IEEE Transactions on Computer-Aided Design of Integrated
+Circuits and Systems (TCAD), 2022.
+[2] S. Kumar, A. Sharma, and R. Patel, “Optimization of physically-aware
+synthesis for digital implementation flow,” International Journal of
+Engineering and Technology, vol. 7, no. 2.8, pp. 453–458, 2018.
+[3] S. Liu, W. Fang, Y. Lu, J. Wang, Q. Zhang, H. Zhang, and Z. Xie,
+“Rtlcoder: Fully open-source and efficient llm-assisted rtl code generation
+technique,” IEEE Transactions on Computer-Aided Design of Integrated
+Circuits and Systems, 2024.
+[4] K. Chang, Y. Wang, H. Ren, M. Wang, S. Liang, Y. Han, H. Li, and
+X. Li, “Chipgpt: How far are we from natural language hardware design,”
+CoRR, vol. abs/2305.14019, 2023.
+[5] J. Blocklove, S. Garg, R. Karri, and H. Pearce, “Chip-chat: Challenges
+and opportunities in conversational hardware design,” in 5th ACM/IEEE
+Workshop on Machine Learning for CAD, MLCAD.
+IEEE, 2023.
+[6] R. Zhong, X. Du, S. Kai, Z. Tang, S. Xu, H.-L. Zhen, J. Hao,
+Q. Xu, M. Yuan, and J. Yan, “Llm4eda: Emerging progress in large
+language models for electronic design automation,” arXiv preprint
+arXiv:2401.12224, 2024.
+[7] S. Liu, N. Pinckney, B. Khailany, and H. Ren, “Verilogeval: Evaluating
+large language models for verilog code generation,” in Proc. IEEE/ACM
+International Conference on Computer-Aided Design (ICCAD), 2023.
+[8] Y. Wang, G. Sun, W. Ye, G. Qu, and A. Li, “Verireason: Reinforcement
+learning with testbench feedback for reasoning-enhanced verilog
+generation,” 2025. [Online]. Available: https://arxiv.org/abs/2505.11849
+[9] Y. Tsai, M. Liu, and H. Ren, “Rtlfixer: Automatically fixing RTL syntax
+errors with large language model,” in Proceedings of the 61st ACM/IEEE
+Design Automation Conference, DAC.
+ACM, 2024.
+[10] X. Yao, Y. Wang, X. Li, Y. Lian, C. Ran, L. Chen, M. Yuan, H. Xu,
+and B. Yu, “Rtlrewriter: Methodologies for large models aided rtl code
+optimization,” 09 2024.
+[11] Y. Wang, W. Ye, P. Guo, Y. He, Z. Wang, Y. He, B. Tian, S. He, G. Sun,
+Z. Shen, S. Chen, A. Srivastava, Q. Zhang, G. Qu, and A. Li, “Symrtlo:
+Enhancing rtl code optimization with llms and neuron-inspired symbolic
+reasoning,” 2025. [Online]. Available: https://arxiv.org/abs/2504.10369
+[12] M. Liu, N. Pinckney, B. Khailany, and H. Ren, “Chipnemo: Domain-
+adapted llms for chip design,” arXiv preprint arXiv:2311.00176, 2023.
+[13] Z. He, H. Wu, X. Zhang, X. Yao, S. Zheng, H. Zheng, and B. Yu,
+“Chateda: A large language model powered autonomous agent for eda,”
+arXiv preprint arXiv:2308.10204, 2024.
+[14] J. Blocklove, S. Garg, R. Karri, and H. Pearce, “Chip-chat: Challenges
+and opportunities in conversational hardware design,” in 2023 ACM/IEEE
+5th Workshop on Machine Learning for CAD (MLCAD), 2023.
+[15] T. Ajayi, D. Blaauw, T. Chan, C.-K. Cheng, V. A. Chhabria, D. K. Choo,
+M. Coltella, S. Dobre, R. Dreslinski, M. Fogaça, S. Hashemi, A. Hosny,
+A. B. Kahng, M. Kim, J. Li, Z. Liang, U. Mallappa, P. Penzes, G. Pradipta,
+S. Reda, A. Samal, S. S. Sapatnekar, C. Sechen, V. Srinivas, W. Swartz,
+D. Sylvester, D. Urquhart, L. Wang, M. Woo, and B. Xu, “Openroad:
+Toward a self-driving, open-source digital layout implementation tool
+chain,” in Proc. 56th ACM/IEEE Design Automation Conference (DAC),
+2019.
+[16] M. Shalan and T. Edwards, “Building openlane: A 130nm openroad-based
+tapeout- proven flow : Invited paper,” in 2020 IEEE/ACM International
+Conference On Computer Aided Design (ICCAD), 2020, pp. 1–6.
+[17] L. E. Geralla, M. J. de Guzman, and J. A. Hora, “Optimization of
+physically-aware synthesis for digital implementation flow,” International
+Journal of Engineering and Technology, vol. 7, no. 2.11, pp. 31–34, 2018.
+[18] ——, “Optimization of physically-aware synthesis for digital implemen-
+tation flow,” International Journal of Engineering and Technology, vol. 7,
+no. 2.11, pp. 31–34, 2018.
+[19] Y. Zhang, K. Liu, and J. Chen, “Physically aware synthesis revisited:
+Guiding technology mapping with primitive logic gate placement,” arXiv
+preprint arXiv:2408.07886, 2025.
+[20] B. C. Schafer and Z. Wang, “High-level synthesis design space explo-
+ration: Past, present, and future,” IEEE Transactions on Computer-Aided
+Design of Integrated Circuits and Systems, vol. 39, no. 10, pp. 2628–2639,
+2019.
+[21] J. Yi, D. Lilja, and D. Hawkins, “Efficient system design space exploration
+using machine learning techniques,” in Proc. 45th Annual Design
+Automation Conference (DAC), 2008.
+[22] Various Authors, “Design-space exploration - an overview,” ScienceDirect
+Topics, 2019.
+[23] J. Pan, G. Zhou, C.-C. Chang, I. Jacobson, J. Hu, and Y. Chen, “A
+survey of research in large language models for electronic design
+automation,” ACM Trans. Des. Autom. Electron. Syst., vol. 30, no. 3,
+Feb. 2025. [Online]. Available: https://doi.org/10.1145/3715324
+[24] S. Thakur, B. Ahmad, H. Pearce, B. Tan, B. Dolan-Gavitt, R. Karri, and
+H. Pearce, “Verigen: A large language model for verilog code generation,”
+ACM Transactions on Design Automation of Electronic Systems, vol. 29,
+no. 2, pp. 1–31, 2023.
+[25] S. Thakur, B. Ahmad, Z. Fan, H. Pearce, B. Tan, R. Karri,
+B. Dolan-Gavitt, and S. Garg, “Benchmarking large language models
+for automated verilog rtl code generation,” 2022. [Online]. Available:
+https://arxiv.org/abs/2212.11140
+[26] Anthropic, “Model context protocol specification,” Anthropic, Tech. Rep.,
+March 2025.
+[27] X. Hou, Y. Chen, Z. Wang, and L. Liu, “Model context protocol (mcp):
+Landscape, security threats, and future research directions,” arXiv preprint
+arXiv:2503.23278, 2025.
+[28] C. Wolf, J. Glaser, and J. Kepler, “Yosys-a free verilog synthesis suite,”
+in Proceedings of the Forum on Specification and Design Languages
+(FDL), 2013, yosys is the first open-source Verilog synthesis suite
+supporting a wide range of synthesizable Verilog features. [Online].
+Available: https://api.semanticscholar.org/CorpusID:202611483
+[29] R. Brayton and A. Mishchenko, “ABC: An academic industrial-strength
+verification tool,” in Computer Aided Verification: 22nd International
+Conference, CAV 2010, Edinburgh, UK, July 15–19, 2010. Proceedings
+22.
+Springer, 2010, pp. 24–40.
+[30] “OpenCores,” https://opencores.org/.
